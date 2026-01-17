@@ -2,14 +2,66 @@
 
 import { generateText } from "ai";
 import { createGroq } from "@ai-sdk/groq";
+import { auth } from "@clerk/nextjs/server";
 
 const groq = createGroq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+async function saveToMongoDB(analysisData: {
+  resume_text: string;
+  job_description: string;
+  matched_skills: string[];
+  missing_skills: string[];
+  extra_skills: string[];
+  match_percentage: number;
+  roadmap: string;
+}) {
+  try {
+    const { userId } = await auth();
+
+    if (!userId) {
+      console.error("[MongoDB] No userId available - user not authenticated");
+      return null;
+    }
+
+    console.log("[MongoDB] Attempting to save data for user:", userId);
+
+    // For Server Actions, we'll use the Clerk Secret Key directly
+    // This is secure because it only runs on the server
+    const response = await fetch(`${API_BASE_URL}/api/skill-analysis`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-id": userId,
+        "x-api-key": process.env.CLERK_SECRET_KEY || "",
+      },
+      body: JSON.stringify({
+        ...analysisData,
+        user_id: userId,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("[MongoDB] Save failed:", response.status, errorText);
+      return null;
+    }
+
+    const result = await response.json();
+    console.log("[MongoDB] Data saved successfully:", result.id);
+    return result;
+  } catch (error) {
+    console.error("[MongoDB] Error saving to database:", error);
+    return null;
+  }
+}
+
 export async function analyzeSkillMatch(
   resume: string,
-  jobDescription: string
+  jobDescription: string,
 ) {
   const prompt = `You are an expert ATS skill-matching engine. Your job is to extract skills from the Resume and compare them with the Job Description (JD) with high accuracy.
 
@@ -195,11 +247,34 @@ Keep it practical, progressive, and actionable with WORKING links from APPROVED 
       "Great! You already have all the required skills. Focus on building projects to demonstrate your expertise.";
   }
 
+  // Save to MongoDB
+  const mongoResult = await saveToMongoDB({
+    resume_text: resume,
+    job_description: jobDescription,
+    matched_skills: skillsData.matched || [],
+    missing_skills: skillsData.missing || [],
+    extra_skills: skillsData.extra || [],
+    match_percentage: matchPercentage,
+    roadmap: roadmap,
+  });
+
+  if (mongoResult) {
+    console.log(
+      "[v0] Successfully saved to MongoDB with ID:",
+      mongoResult.id || mongoResult.analysis_id,
+    );
+  } else {
+    console.warn(
+      "[v0] Failed to save to MongoDB, but continuing with analysis",
+    );
+  }
+
   return {
     matched: skillsData.matched || [],
     missing: skillsData.missing || [],
     extra: skillsData.extra || [],
     roadmap,
     matchPercentage,
+    savedToDatabase: !!mongoResult, // Include save status in response
   };
 }

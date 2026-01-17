@@ -1,218 +1,199 @@
-from fastapi import FastAPI, HTTPException, Depends, Header
-from fastapi.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
+from fastapi import FastAPI, HTTPException, Header, Depends
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import List, Optional
+from pymongo import MongoClient
+from datetime import datetime
 import os
 from dotenv import load_dotenv
-import httpx
-from urllib.parse import quote_plus
 
 load_dotenv()
 
 app = FastAPI()
 
-# CORS Configuration - Add your Next.js URL
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",  # Local development
-        "https://your-app.vercel.app"  # Production
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# MongoDB Configuration with proper URL encoding
-MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
-
-# If you're using username/password authentication, encode them properly
-# Example for MongoDB Atlas or authenticated connection:
+# MongoDB setup
 MONGODB_USER = os.getenv("MONGODB_USER")
 MONGODB_PASSWORD = os.getenv("MONGODB_PASSWORD")
-MONGODB_HOST = os.getenv("MONGODB_HOST", "localhost:27017")
+MONGODB_HOST = os.getenv("MONGODB_HOST")
 MONGODB_DB = os.getenv("MONGODB_DB", "ats_database")
 
-if MONGODB_USER and MONGODB_PASSWORD:
-    # Encode username and password
-    encoded_user = quote_plus(MONGODB_USER)
-    encoded_password = quote_plus(MONGODB_PASSWORD)
-    MONGODB_URL = f"mongodb+srv://{encoded_user}:{encoded_password}@{MONGODB_HOST}/{MONGODB_DB}?retryWrites=true&w=majority"
+# Build connection string
+MONGODB_URI = f"mongodb+srv://{MONGODB_USER}:{MONGODB_PASSWORD}@{MONGODB_HOST}/{MONGODB_DB}?retryWrites=true&w=majority"
 
-client = AsyncIOMotorClient(MONGODB_URL)
-db = client.ats_database  # Your database name
+print(f"[MongoDB] Connecting to database: {MONGODB_DB}")
+client = MongoClient(MONGODB_URI)
+db = client[MONGODB_DB]
+collection = db["skill_analyses"]
 
-# Clerk Configuration
-CLERK_SECRET_KEY = os.getenv("CLERK_SECRET_KEY")
-CLERK_PUBLISHABLE_KEY = os.getenv("CLERK_PUBLISHABLE_KEY")
+# Test connection
+try:
+    client.admin.command('ping')
+    print(f"[MongoDB] Successfully connected to {MONGODB_DB}")
+    print(f"[MongoDB] Collection: skill_analyses")
+except Exception as e:
+    print(f"[MongoDB] Connection failed: {e}")
 
-
-# Verify Clerk JWT Token
-async def verify_clerk_token(authorization: str = Header(None)):
-    """Verify Clerk session token"""
-    if not authorization:
-        raise HTTPException(status_code=401, detail="No authorization header")
-    
-    try:
-        token = authorization.replace("Bearer ", "")
-        
-        # Verify with Clerk API
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"https://api.clerk.com/v1/sessions/{token}/verify",
-                headers={"Authorization": f"Bearer {CLERK_SECRET_KEY}"}
-            )
-            
-            if response.status_code != 200:
-                raise HTTPException(status_code=401, detail="Invalid token")
-            
-            session_data = response.json()
-            return session_data.get("user_id")
-    
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Token verification failed: {str(e)}")
-
-
-# Pydantic Models
-class SkillAnalysis(BaseModel):
+# Pydantic model for request validation
+class SkillAnalysisRequest(BaseModel):
+    resume_text: str
+    job_description: str
+    matched_skills: List[str]
+    missing_skills: List[str]
+    extra_skills: List[str]
+    match_percentage: float
+    roadmap: str
     user_id: str
-    resume_text: str
-    job_description: str
-    matched_skills: List[str]
-    missing_skills: List[str]
-    extra_skills: List[str]
-    match_percentage: float
-    roadmap: Optional[str] = None
 
-
-class SkillAnalysisCreate(BaseModel):
-    resume_text: str
-    job_description: str
-    matched_skills: List[str]
-    missing_skills: List[str]
-    extra_skills: List[str]
-    match_percentage: float
-    roadmap: Optional[str] = None
-
-
-# Routes
-@app.get("/")
-async def root():
-    return {"message": "ATS Backend API", "status": "running"}
-
-
-@app.get("/api/health")
-async def health_check():
-    """Health check endpoint"""
-    try:
-        # Check MongoDB connection
-        await db.command("ping")
-        return {"status": "healthy", "database": "connected"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
+# Simple authentication dependency
+async def verify_clerk_auth(
+    x_user_id: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None)
+):
+    """Verify authentication using API key"""
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="Missing API key")
+    
+    # Verify it matches your Clerk Secret Key
+    expected_secret = os.getenv("CLERK_SECRET_KEY")
+    
+    if not expected_secret:
+        raise HTTPException(status_code=500, detail="Server configuration error")
+    
+    if x_api_key != expected_secret:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    
+    if not x_user_id:
+        raise HTTPException(status_code=401, detail="Missing user ID")
+    
+    return x_user_id
 
 @app.post("/api/skill-analysis")
 async def save_skill_analysis(
-    analysis: SkillAnalysisCreate,
-    user_id: str = Depends(verify_clerk_token)
+    analysis: SkillAnalysisRequest,
+    user_id: str = Depends(verify_clerk_auth)
 ):
-    """Save skill analysis result"""
+    """Save skill analysis to MongoDB"""
     try:
-        analysis_data = analysis.dict()
-        analysis_data["user_id"] = user_id
+        # Verify the user_id in the body matches the authenticated user
+        if analysis.user_id != user_id:
+            raise HTTPException(status_code=403, detail="User ID mismatch")
         
-        result = await db.skill_analyses.insert_one(analysis_data)
+        # Create document
+        document = {
+            "user_id": user_id,
+            "resume_text": analysis.resume_text,
+            "job_description": analysis.job_description,
+            "matched_skills": analysis.matched_skills,
+            "missing_skills": analysis.missing_skills,
+            "extra_skills": analysis.extra_skills,
+            "match_percentage": analysis.match_percentage,
+            "roadmap": analysis.roadmap,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
+        }
+        
+        # Debug logging
+        print(f"[MongoDB] Saving to database: {db.name}")
+        print(f"[MongoDB] Collection: {collection.name}")
+        print(f"[MongoDB] User ID: {user_id}")
+        
+        # Insert into MongoDB
+        result = collection.insert_one(document)
+        inserted_id = str(result.inserted_id)
+        
+        # Verify the document was inserted
+        verify_doc = collection.find_one({"_id": result.inserted_id})
+        if verify_doc:
+            print(f"[MongoDB] ✓ Document verified in database")
+            print(f"[MongoDB] ✓ Database: {db.name}, Collection: {collection.name}")
+        else:
+            print(f"[MongoDB] ✗ Document NOT found after insert!")
         
         return {
             "success": True,
-            "analysis_id": str(result.inserted_id),
-            "message": "Analysis saved successfully"
+            "id": inserted_id,
+            "analysis_id": inserted_id,
+            "database": db.name,
+            "collection": collection.name,
+            "message": "Skill analysis saved successfully"
         }
-    
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error saving analysis: {str(e)}")
+        print(f"[MongoDB] Error saving to database: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
-
-@app.get("/api/skill-analysis/history")
-async def get_user_history(
-    limit: int = 10,
-    user_id: str = Depends(verify_clerk_token)
+@app.get("/api/skill-analysis/{user_id}")
+async def get_user_analyses(
+    user_id: str,
+    authenticated_user: str = Depends(verify_clerk_auth)
 ):
-    """Get user's analysis history"""
+    """Get all skill analyses for a user"""
+    # Verify the authenticated user is requesting their own data
+    if user_id != authenticated_user:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
     try:
-        cursor = db.skill_analyses.find({"user_id": user_id}).sort("_id", -1).limit(limit)
-        analyses = await cursor.to_list(length=limit)
+        analyses = list(collection.find(
+            {"user_id": user_id}
+        ).sort("created_at", -1))
         
         # Convert ObjectId to string
         for analysis in analyses:
             analysis["_id"] = str(analysis["_id"])
         
+        print(f"[MongoDB] Found {len(analyses)} analyses for user {user_id}")
+        
         return {
             "success": True,
             "count": len(analyses),
+            "database": db.name,
+            "collection": collection.name,
             "analyses": analyses
         }
-    
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching history: {str(e)}")
+        print(f"[MongoDB] Error fetching data: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
-
-@app.get("/api/skill-analysis/{analysis_id}")
-async def get_analysis(
-    analysis_id: str,
-    user_id: str = Depends(verify_clerk_token)
-):
-    """Get specific analysis by ID"""
+@app.get("/api/debug/database-info")
+async def debug_database_info():
+    """Debug endpoint to check database connection and contents"""
     try:
-        from bson import ObjectId
+        # List all databases
+        db_list = client.list_database_names()
         
-        analysis = await db.skill_analyses.find_one({
-            "_id": ObjectId(analysis_id),
-            "user_id": user_id
-        })
+        # Get collections in current database
+        collections = db.list_collection_names()
         
-        if not analysis:
-            raise HTTPException(status_code=404, detail="Analysis not found")
+        # Count documents in skill_analyses collection
+        doc_count = collection.count_documents({})
         
-        analysis["_id"] = str(analysis["_id"])
+        # Get sample document
+        sample_doc = collection.find_one()
+        if sample_doc:
+            sample_doc["_id"] = str(sample_doc["_id"])
         
         return {
-            "success": True,
-            "analysis": analysis
+            "connected": True,
+            "current_database": db.name,
+            "available_databases": db_list,
+            "collections_in_current_db": collections,
+            "skill_analyses_count": doc_count,
+            "sample_document": sample_doc
         }
-    
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching analysis: {str(e)}")
-
-
-@app.delete("/api/skill-analysis/{analysis_id}")
-async def delete_analysis(
-    analysis_id: str,
-    user_id: str = Depends(verify_clerk_token)
-):
-    """Delete analysis"""
-    try:
-        from bson import ObjectId
-        
-        result = await db.skill_analyses.delete_one({
-            "_id": ObjectId(analysis_id),
-            "user_id": user_id
-        })
-        
-        if result.deleted_count == 0:
-            raise HTTPException(status_code=404, detail="Analysis not found")
-        
         return {
-            "success": True,
-            "message": "Analysis deleted successfully"
+            "connected": False,
+            "error": str(e)
         }
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error deleting analysis: {str(e)}")
 
+# CORS middleware (if frontend is on different domain)
+from fastapi.middleware.cors import CORSMiddleware
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "https://your-app.vercel.app"],  # Add your frontend URLs
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
