@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Loader2,
   CheckCircle2,
@@ -16,86 +16,86 @@ import {
   Clock,
   FileText,
   Cpu,
-} from "lucide-react"
-import { UserButton } from "@clerk/nextjs"
-import { analyzeSkillMatch } from "./actions"
+} from "lucide-react";
+import { UserButton } from "@clerk/nextjs";
+import { analyzeSkillMatch } from "./actions";
 
 // --- Types ---
 interface SkillResult {
-  matched: string[]
-  missing: string[]
-  extra: string[]
-  roadmap: string
-  matchPercentage: number
+  matched: string[];
+  missing: string[];
+  extra: string[];
+  roadmap: string;
+  matchPercentage: number;
 }
 
 interface Day {
-  title: string
-  duration: string
-  resources: Array<{ topic: string; link: string }>
+  title: string;
+  duration: string;
+  resources: Array<{ topic: string; link: string }>;
 }
 
 interface Week {
-  title: string
-  subtitle: string
-  days: Day[]
+  title: string;
+  subtitle: string;
+  days: Day[];
 }
 
 // --- Helper Functions ---
 function parseRoadmap(roadmap: string): Week[] {
-  const weeks: Week[] = []
-  const lines = roadmap.split("\n")
+  const weeks: Week[] = [];
+  const lines = roadmap.split("\n");
 
-  let currentWeek: Week | null = null
-  let currentDay: Day | null = null
+  let currentWeek: Week | null = null;
+  let currentDay: Day | null = null;
 
   for (const line of lines) {
-    const trimmedLine = line.trim()
+    const trimmedLine = line.trim();
 
     if (trimmedLine.match(/^##?\s*Week\s*\d+/i)) {
       if (currentWeek && currentDay) {
-        currentWeek.days.push(currentDay)
-        currentDay = null
+        currentWeek.days.push(currentDay);
+        currentDay = null;
       }
       if (currentWeek) {
-        weeks.push(currentWeek)
+        weeks.push(currentWeek);
       }
-      const weekMatch = trimmedLine.match(/Week\s*(\d+)[:\s]*(.*)$/i)
+      const weekMatch = trimmedLine.match(/Week\s*(\d+)[:\s]*(.*)$/i);
       currentWeek = {
         title: `Week ${weekMatch?.[1] || weeks.length + 1}`,
         subtitle: weekMatch?.[2] || "Focus Period",
         days: [],
-      }
+      };
     } else if (trimmedLine.match(/^###?\s*Day\s*\d+/i)) {
       if (currentDay && currentWeek) {
-        currentWeek.days.push(currentDay)
+        currentWeek.days.push(currentDay);
       }
-      const dayMatch = trimmedLine.match(/Day\s*(\d+)[:\s]*(.*)$/i)
+      const dayMatch = trimmedLine.match(/Day\s*(\d+)[:\s]*(.*)$/i);
       currentDay = {
         title: dayMatch?.[2] || trimmedLine,
         duration: "",
         resources: [],
-      }
+      };
     } else if (currentDay && trimmedLine.match(/[-–]\s*Time:/i)) {
-      const timeMatch = trimmedLine.match(/Time:\s*(.+)$/i)
+      const timeMatch = trimmedLine.match(/Time:\s*(.+)$/i);
       if (timeMatch) {
-        currentDay.duration = timeMatch[1]
+        currentDay.duration = timeMatch[1];
       }
     } else if (currentDay && trimmedLine.match(/[-–]\s*.+\|.+/)) {
-      const parts = trimmedLine.replace(/^[-–]\s*/, "").split("|")
+      const parts = trimmedLine.replace(/^[-–]\s*/, "").split("|");
       if (parts.length >= 2) {
-        const topic = parts[0].trim()
-        const link = parts[1].trim()
-        currentDay.resources.push({ topic, link })
+        const topic = parts[0].trim();
+        const link = parts[1].trim();
+        currentDay.resources.push({ topic, link });
       }
     }
   }
 
   if (currentDay && currentWeek) {
-    currentWeek.days.push(currentDay)
+    currentWeek.days.push(currentDay);
   }
   if (currentWeek) {
-    weeks.push(currentWeek)
+    weeks.push(currentWeek);
   }
 
   if (weeks.length === 0) {
@@ -109,16 +109,16 @@ function parseRoadmap(roadmap: string): Week[] {
           resources: [],
         },
       ],
-    })
+    });
   }
 
-  return weeks
+  return weeks;
 }
 
 // --- Components ---
 
 function RoadmapDisplay({ roadmap }: { roadmap: string }) {
-  const weeks = parseRoadmap(roadmap)
+  const weeks = parseRoadmap(roadmap);
 
   return (
     <div className="space-y-12 relative">
@@ -134,8 +134,12 @@ function RoadmapDisplay({ roadmap }: { roadmap: string }) {
                   W{weekIndex + 1}
                 </div>
                 <div>
-                  <h3 className="text-2xl font-bold text-white tracking-tight">{week.title}</h3>
-                  <p className="text-sm font-medium text-cyan-400">{week.subtitle}</p>
+                  <h3 className="text-2xl font-bold text-white tracking-tight">
+                    {week.title}
+                  </h3>
+                  <p className="text-sm font-medium text-cyan-400">
+                    {week.subtitle}
+                  </p>
                 </div>
               </div>
             </div>
@@ -163,10 +167,15 @@ function RoadmapDisplay({ roadmap }: { roadmap: string }) {
                       {day.resources.length > 0 && (
                         <div className="space-y-2 mt-4 pl-4 border-l-2 border-cyan-500/20">
                           {day.resources.map((resource, resIndex) => (
-                            <div key={resIndex} className="flex items-start gap-2 text-md">
+                            <div
+                              key={resIndex}
+                              className="flex items-start gap-2 text-md"
+                            >
                               <BookOpen className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-500" />
                               <div className="flex-1">
-                                <span className="text-slate-300">{resource.topic}</span>
+                                <span className="text-slate-300">
+                                  {resource.topic}
+                                </span>
                                 {resource.link && (
                                   <a
                                     href={resource.link}
@@ -191,15 +200,21 @@ function RoadmapDisplay({ roadmap }: { roadmap: string }) {
         </div>
       ))}
     </div>
-  )
+  );
 }
 
-function ResultsView({ result, onBack }: { result: SkillResult; onBack: () => void }) {
+function ResultsView({
+  result,
+  onBack,
+}: {
+  result: SkillResult;
+  onBack: () => void;
+}) {
   const getMatchMessage = (percentage: number) => {
-    if (percentage >= 70) return "High Compatibility."
-    if (percentage >= 50) return "Moderate Compatibility."
-    return "Low Compatibility."
-  }
+    if (percentage >= 70) return "High Compatibility.";
+    if (percentage >= 50) return "Moderate Compatibility.";
+    return "Low Compatibility.";
+  };
 
   const handleDownloadPDF = () => {
     // Create HTML content for PDF
@@ -380,58 +395,58 @@ function ResultsView({ result, onBack }: { result: SkillResult; onBack: () => vo
     </div>
 </body>
 </html>
-    `
-    const blob = new Blob([htmlContent], { type: "text/html" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `skill-match-roadmap-${Date.now()}.html`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-  }
+    `;
+    const blob = new Blob([htmlContent], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `skill-match-roadmap-${Date.now()}.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
   const formatRoadmapForPDF = (roadmap: string): string => {
-    const lines = roadmap.split("\n")
-    let html = ""
-    let inWeek = false
-    let inDay = false
+    const lines = roadmap.split("\n");
+    let html = "";
+    let inWeek = false;
+    let inDay = false;
 
     for (const line of lines) {
-      const trimmed = line.trim()
+      const trimmed = line.trim();
 
       if (trimmed.match(/^##?\s*Week\s*\d+/i)) {
-        if (inDay) html += "</div>"
-        if (inWeek) html += "</div>"
-        const weekMatch = trimmed.match(/Week\s*(\d+)[:\s]*(.*)$/i)
-        html += `<div class="week"><div class="week-header">Week ${weekMatch?.[1] || ""}: ${weekMatch?.[2] || "Learning Period"}</div>`
-        inWeek = true
-        inDay = false
+        if (inDay) html += "</div>";
+        if (inWeek) html += "</div>";
+        const weekMatch = trimmed.match(/Week\s*(\d+)[:\s]*(.*)$/i);
+        html += `<div class="week"><div class="week-header">Week ${weekMatch?.[1] || ""}: ${weekMatch?.[2] || "Learning Period"}</div>`;
+        inWeek = true;
+        inDay = false;
       } else if (trimmed.match(/^###?\s*Day\s*\d+/i)) {
-        if (inDay) html += "</div>"
-        const dayMatch = trimmed.match(/Day\s*(\d+)[:\s]*(.*)$/i)
-        html += `<div class="day"><div class="day-title">Day ${dayMatch?.[1] || ""}: ${dayMatch?.[2] || trimmed}</div>`
-        inDay = true
+        if (inDay) html += "</div>";
+        const dayMatch = trimmed.match(/Day\s*(\d+)[:\s]*(.*)$/i);
+        html += `<div class="day"><div class="day-title">Day ${dayMatch?.[1] || ""}: ${dayMatch?.[2] || trimmed}</div>`;
+        inDay = true;
       } else if (trimmed.match(/[-–]\s*Time:/i)) {
-        const timeMatch = trimmed.match(/Time:\s*(.+)$/i)
+        const timeMatch = trimmed.match(/Time:\s*(.+)$/i);
         if (timeMatch) {
-          html += `<div style="color: #64748b; font-size: 14px; margin-bottom: 8px;">⏱️ ${timeMatch[1]}</div>`
+          html += `<div style="color: #64748b; font-size: 14px; margin-bottom: 8px;">⏱️ ${timeMatch[1]}</div>`;
         }
       } else if (trimmed.match(/[-–]\s*.+\|.+/)) {
-        const parts = trimmed.replace(/^[-–]\s*/, "").split("|")
+        const parts = trimmed.replace(/^[-–]\s*/, "").split("|");
         if (parts.length >= 2) {
-          const topic = parts[0].trim()
-          const link = parts[1].trim()
-          html += `<div class="resource">📚 ${topic} <a href="${link}" target="_blank">→ Reference</a></div>`
+          const topic = parts[0].trim();
+          const link = parts[1].trim();
+          html += `<div class="resource">📚 ${topic} <a href="${link}" target="_blank">→ Reference</a></div>`;
         }
       }
     }
 
-    if (inDay) html += "</div>"
-    if (inWeek) html += "</div>"
+    if (inDay) html += "</div>";
+    if (inWeek) html += "</div>";
 
-    return html || "<p>No roadmap available.</p>"
-  }
+    return html || "<p>No roadmap available.</p>";
+  };
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-200 font-sans selection:bg-cyan-500/30">
@@ -463,7 +478,9 @@ function ResultsView({ result, onBack }: { result: SkillResult; onBack: () => vo
         <div className="mb-12 relative overflow-hidden rounded-3xl border border-cyan-500/30 bg-[#0B1221]/90 p-10 text-center shadow-[0_0_50px_-12px_rgba(6,182,212,0.25)]">
           <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(6,182,212,0.05)_50%,transparent_75%)] bg-[length:250%_250%] animate-pulse" />
 
-          <p className="mb-4 text-sm font-bold uppercase tracking-[0.2em] text-cyan-500">Analysis Complete</p>
+          <p className="mb-4 text-sm font-bold uppercase tracking-[0.2em] text-cyan-500">
+            Analysis Complete
+          </p>
           <div className="relative inline-flex items-center justify-center">
             <div className="absolute inset-0 blur-xl bg-cyan-700/20 rounded-full" />
             <p className="relative text-8xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white via-cyan-100 to-cyan-500">
@@ -477,7 +494,9 @@ function ResultsView({ result, onBack }: { result: SkillResult; onBack: () => vo
               style={{ width: `${result.matchPercentage}%` }}
             />
           </div>
-          <p className="text-lg text-cyan-200/70 font-mono">{getMatchMessage(result.matchPercentage)}</p>
+          <p className="text-lg text-cyan-200/70 font-mono">
+            {getMatchMessage(result.matchPercentage)}
+          </p>
         </div>
 
         <div className="mb-16 grid gap-8 lg:grid-cols-3">
@@ -486,7 +505,9 @@ function ResultsView({ result, onBack }: { result: SkillResult; onBack: () => vo
             <div className="border-b border-emerald-500/20 bg-emerald-950/10 p-6 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <CheckCircle2 className="h-6 w-6 text-emerald-400" />
-                <h3 className="text-lg font-bold text-emerald-100">Matched Skills</h3>
+                <h3 className="text-lg font-bold text-emerald-100">
+                  Matched Skills
+                </h3>
                 <span className="bg-emerald-500/20 text-emerald-100 text-md ml-4 px-2 py-1 rounded font-mono">
                   {result.matched.length}
                 </span>
@@ -509,7 +530,9 @@ function ResultsView({ result, onBack }: { result: SkillResult; onBack: () => vo
             <div className="border-b border-rose-500/20 bg-rose-950/10 p-6 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <XCircle className="h-6 w-6 text-rose-400" />
-                <h3 className="text-lg font-bold text-rose-100">Missing Skills</h3>
+                <h3 className="text-lg font-bold text-rose-100">
+                  Missing Skills
+                </h3>
                 <span className="bg-rose-400/20 text-rose-100 ml-5 text-md px-2 py-1 rounded font-mono">
                   {result.missing.length}
                 </span>
@@ -528,11 +551,13 @@ function ResultsView({ result, onBack }: { result: SkillResult; onBack: () => vo
           </div>
 
           {/* Extra Skills - Amber/Yellow to match Image */}
-          <div className="group rounded-2xl border border-amber-500/30 bg-[#080E1A] p-8 md:p-12 shadow-2xl relative overflow-hidden">
+          <div className="group rounded-2xl border border-amber-500/30 bg-[#080E1A] shadow-2xl relative overflow-hidden">
             <div className="border-b border-amber-500/20 bg-amber-950/10 p-6 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Plus className="h-6 w-6 text-amber-400" />
-                <h3 className="text-lg font-bold text-amber-100">Extra Skills</h3>
+                <h3 className="text-lg font-bold text-amber-100">
+                  Extra Skills
+                </h3>
                 <span className="bg-amber-500/20 text-amber-200 text-md ml-7 px-2 py-1 rounded font-mono">
                   {result.extra.length}
                 </span>
@@ -554,50 +579,54 @@ function ResultsView({ result, onBack }: { result: SkillResult; onBack: () => vo
         {/* Roadmap Display */}
         <div className="rounded-3xl border border-cyan-500/20 bg-[#080E1A] p-8 md:p-12 shadow-2xl relative overflow-hidden">
           <div className="mb-12 relative z-10">
-            <h2 className="text-3xl font-bold text-white mb-2">Learning Protocol</h2>
-            <p className="text-slate-400">Execute the following sequence to bridge skill gaps.</p>
+            <h2 className="text-3xl font-bold text-white mb-2">
+              Learning Protocol
+            </h2>
+            <p className="text-slate-400">
+              Execute the following sequence to bridge skill gaps.
+            </p>
           </div>
 
           <RoadmapDisplay roadmap={result.roadmap} />
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 // --- Main Page Component ---
 export default function SkillMatchPage() {
-  const [resume, setResume] = useState("")
-  const [jobDescription, setJobDescription] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const [result, setResult] = useState<SkillResult | null>(null)
+  const [resume, setResume] = useState("");
+  const [jobDescription, setJobDescription] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [result, setResult] = useState<SkillResult | null>(null);
 
   const handleAnalyze = async () => {
     if (!resume.trim() || !jobDescription.trim()) {
-      return
+      return;
     }
 
-    setIsLoading(true)
-    setResult(null)
+    setIsLoading(true);
+    setResult(null);
 
     try {
-      const analysis = await analyzeSkillMatch(resume, jobDescription)
-      setResult(analysis)
+      const analysis = await analyzeSkillMatch(resume, jobDescription);
+      setResult(analysis);
     } catch (error) {
-      console.error("Error analyzing skills:", error)
+      console.error("Error analyzing skills:", error);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleReset = () => {
-    setResult(null)
-    setResume("")
-    setJobDescription("")
-  }
+    setResult(null);
+    setResume("");
+    setJobDescription("");
+  };
 
   if (result) {
-    return <ResultsView result={result} onBack={handleReset} />
+    return <ResultsView result={result} onBack={handleReset} />;
   }
 
   return (
@@ -641,7 +670,8 @@ export default function SkillMatchPage() {
               </span>
             </h1>
             <p className="mx-auto max-w-2xl text-lg text-slate-400 mb-5 leading-relaxed">
-              Advanced AI processing to bridge the gap between your current capabilities and your target directive.
+              Advanced AI processing to bridge the gap between your current
+              capabilities and your target directive.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-6">
               <div className="flex items-center gap-2.5 text-cyan-400 ">
@@ -687,7 +717,9 @@ export default function SkillMatchPage() {
               <div className="relative h-full rounded-2xl bg-[#0B1120] border border-white/10 p-1">
                 <div className="border-b border-white/5 p-4 bg-white/5 rounded-t-xl flex items-center gap-3">
                   <FileText className="h-5 w-5 text-cyan-400" />
-                  <span className="font-semibold text-cyan-50">Update Resume</span>
+                  <span className="font-semibold text-cyan-50">
+                    Update Resume
+                  </span>
                 </div>
                 <div className="p-4">
                   <Textarea
@@ -706,7 +738,9 @@ export default function SkillMatchPage() {
               <div className="relative h-full rounded-2xl bg-[#0B1120] border border-white/10 p-1">
                 <div className="border-b border-white/5 p-4 bg-white/5 rounded-t-xl flex items-center gap-3">
                   <TrendingUp className="h-5 w-5 text-purple-400" />
-                  <span className="font-semibold text-purple-50">Upload Job Description</span>
+                  <span className="font-semibold text-purple-50">
+                    Upload Job Description
+                  </span>
                 </div>
                 <div className="p-4">
                   <Textarea
@@ -746,5 +780,5 @@ export default function SkillMatchPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }
