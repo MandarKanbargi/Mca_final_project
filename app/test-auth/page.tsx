@@ -1,4 +1,3 @@
-// app/test-auth/page.tsx - Create this file to test authentication
 "use client";
 
 import { useUser, useAuth } from "@clerk/nextjs";
@@ -112,7 +111,7 @@ export default function TestAuthPage() {
           headers: {
             Authorization: `Bearer ${token}`,
           },
-        }
+        },
       );
 
       const data = await response.json();

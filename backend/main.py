@@ -73,7 +73,7 @@ async def save_skill_analysis(
 ):
     """Save skill analysis to MongoDB"""
     try:
-        # Verify the user_id in the body matches the authenticated user
+        # Verify user_id in body matches the authenticated user
         if analysis.user_id != user_id:
             raise HTTPException(status_code=403, detail="User ID mismatch")
         
@@ -100,7 +100,7 @@ async def save_skill_analysis(
         result = collection.insert_one(document)
         inserted_id = str(result.inserted_id)
         
-        # Verify the document was inserted
+    
         verify_doc = collection.find_one({"_id": result.inserted_id})
         if verify_doc:
             print(f"[MongoDB] ✓ Document verified in database")
@@ -162,13 +162,13 @@ async def debug_database_info():
         # List all databases
         db_list = client.list_database_names()
         
-        # Get collections in current database
+       
         collections = db.list_collection_names()
         
-        # Count documents in skill_analyses collection
+        
         doc_count = collection.count_documents({})
         
-        # Get sample document
+       
         sample_doc = collection.find_one()
         if sample_doc:
             sample_doc["_id"] = str(sample_doc["_id"])
@@ -187,12 +187,12 @@ async def debug_database_info():
             "error": str(e)
         }
 
-# CORS middleware (if frontend is on different domain)
+# CORS middleware 
 from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://your-app.vercel.app"],  # Add your frontend URLs
+    allow_origins=["http://localhost:3000", "https://your-app.vercel.app"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

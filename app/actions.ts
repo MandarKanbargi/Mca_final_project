@@ -29,8 +29,6 @@ async function saveToMongoDB(analysisData: {
 
     console.log("[MongoDB] Attempting to save data for user:", userId);
 
-    // For Server Actions, we'll use the Clerk Secret Key directly
-    // This is secure because it only runs on the server
     const response = await fetch(`${API_BASE_URL}/api/skill-analysis`, {
       method: "POST",
       headers: {
