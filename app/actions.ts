@@ -8,7 +8,7 @@ const groq = createGroq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 
 async function saveToMongoDB(analysisData: {
   resume_text: string;
