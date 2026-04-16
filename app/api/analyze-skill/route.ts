@@ -1,12 +1,13 @@
-"use server";
-
+import { auth } from "@clerk/nextjs/server";
+import { NextRequest, NextResponse } from "next/server";
 import { generateText } from "ai";
 import { createGroq } from "@ai-sdk/groq";
-import { auth } from "@clerk/nextjs/server";
 
 const groq = createGroq({
   apiKey: process.env.GROQ_API_KEY,
 });
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 function buildRoadmapPrompt(missingSkills: string[]): string {
   return `Create a detailed 2-week learning roadmap for these missing skills: ${missingSkills.join(", ")}
@@ -74,7 +75,6 @@ CRITICAL: USE ONLY THESE RELIABLE, ALWAYS-WORKING SOURCES:
    - Java: https://docs.oracle.com/javase/tutorial/
    - TypeScript: https://www.typescriptlang.org/docs/
    - Next.js: https://nextjs.org/docs
-   - Express.js: https://expressjs.com/
 
 4. **GeeksforGeeks** - Main topic pages:
    - https://www.geeksforgeeks.org/data-structures/
@@ -92,7 +92,6 @@ CRITICAL: USE ONLY THESE RELIABLE, ALWAYS-WORKING SOURCES:
    - https://www.geeksforgeeks.org/artificial-intelligence/
    - https://www.geeksforgeeks.org/web-development/
    - https://www.geeksforgeeks.org/django-tutorial/
-   - https://www.geeksforgeeks.org/flask-tutorial/
 
 5. **Microsoft Learn** (for .NET, C#, Azure):
    - https://learn.microsoft.com/en-us/dotnet/
@@ -128,123 +127,82 @@ Example with VALID links for ALL content:
 Keep it practical, progressive, and actionable with WORKING links for EVERY learning item from the approved sources only.`;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+function parseJsonSkills(text: string) {
+  let cleanText = text.trim();
+  cleanText = cleanText.replace(/```json\n?/g, "").replace(/```\n?/g, "");
+  const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
 
-async function saveToMongoDB(analysisData: {
-  resume_text: string;
-  job_description: string;
-  matched_skills: string[];
-  missing_skills: string[];
-  extra_skills: string[];
-  match_percentage: number;
-  roadmap: string;
-}) {
-  try {
-    const { userId } = await auth();
-
-    if (!userId) {
-      console.error("[MongoDB] No userId available - user not authenticated");
-      return null;
-    }
-
-    console.log("[MongoDB] Attempting to save data for user:", userId);
-
-    const response = await fetch(`${API_BASE_URL}/api/skill-analysis`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-user-id": userId,
-        "x-api-key": process.env.CLERK_SECRET_KEY || "",
-      },
-      body: JSON.stringify({
-        ...analysisData,
-        user_id: userId,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("[MongoDB] Save failed:", response.status, errorText);
-      return null;
-    }
-
-    const result = await response.json();
-    console.log("[MongoDB] Data saved successfully:", result.id);
-    return result;
-  } catch (error) {
-    console.error("[MongoDB] Error saving to database:", error);
-    return null;
+  if (!jsonMatch) {
+    throw new Error("No JSON found in AI response");
   }
+
+  const jsonStr = jsonMatch[0]
+    .replace(/[\x00-\x1F\x7F]/g, "")
+    .replace(/\n/g, " ")
+    .replace(/\r/g, "");
+
+  return JSON.parse(jsonStr) as {
+    matched: string[];
+    missing: string[];
+    extra: string[];
+  };
 }
 
-export async function analyzeSkillMatchFromPDFs(
-  resumeFile: File,
-  jobDescriptionFile: File,
-) {
-  try {
-    const { userId } = await auth();
-
-    if (!userId) {
-      console.error("[PDF] No userId available - user not authenticated");
-      throw new Error("User not authenticated. Please sign in to continue.");
-    }
-
-    console.log("[PDF] User authenticated:", userId);
-
-    // First, send PDFs to backend to extract text
-    const formData = new FormData();
-    formData.append("resume_pdf", resumeFile);
-    formData.append("job_description_pdf", jobDescriptionFile);
-
-    console.log("[PDF] Sending PDFs to backend for extraction...");
-
-    const extractResponse = await fetch(`${API_BASE_URL}/api/analyze-pdf`, {
-      method: "POST",
-      headers: {
-        "x-user-id": userId,
-        "x-api-key": process.env.CLERK_SECRET_KEY || "",
-      },
-      body: formData,
-    });
-
-    console.log("[PDF] Backend response status:", extractResponse.status);
-
-    if (!extractResponse.ok) {
-      const errorText = await extractResponse.text();
-      console.error(
-        "[PDF] Extraction failed:",
-        extractResponse.status,
-        errorText,
-      );
-      throw new Error(`Failed to extract text from PDFs: ${errorText}`);
-    }
-
-    const extractResult = await extractResponse.json();
-    console.log("[PDF] Text extracted successfully");
-
-    // Now proceed with the skill analysis using the extracted text
-    return await analyzeSkillMatch(
-      extractResult.resume_text,
-      extractResult.job_description_text,
+export async function POST(request: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json(
+      { error: "User not authenticated" },
+      { status: 401 },
     );
-  } catch (error) {
-    console.error("[PDF] Error processing PDFs:", error);
-
-    if (error instanceof Error && /fetch failed/i.test(error.message)) {
-      throw new Error(
-        `Unable to reach backend service at ${API_BASE_URL}. ` +
-          "Make sure the backend server is running and that NEXT_PUBLIC_API_URL is set correctly.",
-      );
-    }
-
-    throw error;
   }
-}
 
-export async function analyzeSkillMatch(
-  resume: string,
-  jobDescription: string,
-) {
+  const formData = await request.formData();
+  const resumeFile = formData.get("resume_pdf");
+  const jobDescriptionFile = formData.get("job_description_pdf");
+
+  if (!(resumeFile instanceof File) || !(jobDescriptionFile instanceof File)) {
+    return NextResponse.json(
+      { error: "Missing resume or job description file" },
+      { status: 400 },
+    );
+  }
+
+  const backendFormData = new FormData();
+  backendFormData.append(
+    "resume_pdf",
+    resumeFile,
+    resumeFile.name || "resume.pdf",
+  );
+  backendFormData.append(
+    "job_description_pdf",
+    jobDescriptionFile,
+    jobDescriptionFile.name || "job_description.pdf",
+  );
+
+  const extractResponse = await fetch(`${API_BASE_URL}/api/analyze-pdf`, {
+    method: "POST",
+    headers: {
+      "x-user-id": userId,
+      "x-api-key": process.env.CLERK_SECRET_KEY || "",
+    },
+    body: backendFormData,
+  });
+
+  if (!extractResponse.ok) {
+    const errorText = await extractResponse.text();
+    return NextResponse.json(
+      {
+        error: `PDF extraction failed: ${extractResponse.status} ${errorText}`,
+      },
+      { status: extractResponse.status },
+    );
+  }
+
+  const extractResult = await extractResponse.json();
+  const resumeText: string = extractResult.resume_text;
+  const jobDescriptionText: string = extractResult.job_description_text;
+
   const prompt = `You are an expert ATS skill-matching engine. Your job is to extract skills from the Resume and compare them with the Job Description (JD) with high accuracy.
 
 Follow these steps STRICTLY:
@@ -272,48 +230,27 @@ Follow these steps STRICTLY:
 }
 
 RESUME:
-${resume}
+${resumeText}
 
 JOB DESCRIPTION:
-${jobDescription}
+${jobDescriptionText}
 
 Return ONLY the JSON object, nothing else.`;
 
-  const { text } = await generateText({
+  const skillResponse = await generateText({
     model: groq("llama-3.3-70b-versatile"),
     prompt,
     maxOutputTokens: 2000,
   });
 
-  console.log("[v0] Raw AI response received, length:", text.length);
-
   let skillsData;
   try {
-    // Remove markdown code blocks if present
-    let cleanText = text.trim();
-    cleanText = cleanText.replace(/```json\n?/g, "").replace(/```\n?/g, "");
-
-    // Find JSON object
-    const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error("No JSON found in response");
-    }
-
-    // Clean control characters and parse
-    const jsonStr = jsonMatch[0]
-      .replace(/[\x00-\x1F\x7F]/g, "") // Remove control characters
-      .replace(/\n/g, " ") // Replace newlines with spaces
-      .replace(/\r/g, ""); // Remove carriage returns
-
-    skillsData = JSON.parse(jsonStr);
-    console.log("[v0] Parsed skills data:", skillsData);
+    skillsData = parseJsonSkills(skillResponse.text);
   } catch (error) {
-    console.error("[v0] Error parsing skills JSON:", error);
-    skillsData = {
-      matched: [],
-      missing: [],
-      extra: [],
-    };
+    return NextResponse.json(
+      { error: "Failed to parse skill analysis response from AI." },
+      { status: 500 },
+    );
   }
 
   const totalRequired =
@@ -326,48 +263,49 @@ Return ONLY the JSON object, nothing else.`;
   let roadmap = "";
   if (skillsData.missing && skillsData.missing.length > 0) {
     const roadmapPrompt = buildRoadmapPrompt(skillsData.missing);
-
-    const roadmapResponse = await generateText({
+    const roadmapResult = await generateText({
       model: groq("llama-3.3-70b-versatile"),
       prompt: roadmapPrompt,
-      maxOutputTokens: 3000,
+      maxOutputTokens: 2000,
     });
-
-    roadmap = roadmapResponse.text;
-    console.log("[v0] Generated roadmap");
-  } else {
-    roadmap =
-      "Great! You already have all the required skills. Focus on building projects to demonstrate your expertise.";
+    roadmap = roadmapResult.text.trim();
   }
 
-  // Save to MongoDB
-  const mongoResult = await saveToMongoDB({
-    resume_text: resume,
-    job_description: jobDescription,
+  const analysisPayload = {
+    resume_text: resumeText,
+    job_description: jobDescriptionText,
     matched_skills: skillsData.matched || [],
     missing_skills: skillsData.missing || [],
     extra_skills: skillsData.extra || [],
     match_percentage: matchPercentage,
-    roadmap: roadmap,
-  });
+    roadmap,
+    user_id: userId,
+  };
 
-  if (mongoResult) {
-    console.log(
-      "[v0] Successfully saved to MongoDB with ID:",
-      mongoResult.id || mongoResult.analysis_id,
-    );
-  } else {
-    console.warn(
-      "[v0] Failed to save to MongoDB, but continuing with analysis",
-    );
+  try {
+    const saveResponse = await fetch(`${API_BASE_URL}/api/skill-analysis`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-id": userId,
+        "x-api-key": process.env.CLERK_SECRET_KEY || "",
+      },
+      body: JSON.stringify(analysisPayload),
+    });
+
+    if (!saveResponse.ok) {
+      const errorText = await saveResponse.text();
+      console.error("[API] Save failed:", saveResponse.status, errorText);
+    }
+  } catch (error) {
+    console.error("[API] Failed to save analysis to backend:", error);
   }
 
-  return {
+  return NextResponse.json({
     matched: skillsData.matched || [],
     missing: skillsData.missing || [],
     extra: skillsData.extra || [],
     roadmap,
     matchPercentage,
-    savedToDatabase: !!mongoResult, // Include save status in response
-  };
+  });
 }

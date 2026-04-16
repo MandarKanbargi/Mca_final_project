@@ -17,8 +17,7 @@ import {
   FileText,
   Cpu,
 } from "lucide-react";
-import { UserButton } from "@clerk/nextjs";
-import { analyzeSkillMatch } from "./actions";
+import { UserButton, useUser } from "@clerk/nextjs";
 
 // --- Types ---
 interface SkillResult {
@@ -596,24 +595,53 @@ function ResultsView({
 
 // --- Main Page Component ---
 export default function SkillMatchPage() {
-  const [resume, setResume] = useState("");
-  const [jobDescription, setJobDescription] = useState("");
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [jobDescriptionFile, setJobDescriptionFile] = useState<File | null>(
+    null,
+  );
+  const { user, isLoaded } = useUser();
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<SkillResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleAnalyze = async () => {
-    if (!resume.trim() || !jobDescription.trim()) {
+    if (!resumeFile || !jobDescriptionFile) {
+      return;
+    }
+
+    if (!isLoaded || !user?.id) {
+      setError("Please sign in before analyzing documents.");
       return;
     }
 
     setIsLoading(true);
     setResult(null);
+    setError(null);
 
     try {
-      const analysis = await analyzeSkillMatch(resume, jobDescription);
+      const formData = new FormData();
+      formData.append("resume_pdf", resumeFile);
+      formData.append("job_description_pdf", jobDescriptionFile);
+
+      const response = await fetch("/api/analyze-skill", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          errorText || "Failed to analyze skills. Please try again.",
+        );
+      }
+
+      const analysis = await response.json();
       setResult(analysis);
     } catch (error) {
       console.error("Error analyzing skills:", error);
+      setError(
+        error instanceof Error ? error.message : "An unknown error occurred",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -621,8 +649,8 @@ export default function SkillMatchPage() {
 
   const handleReset = () => {
     setResult(null);
-    setResume("");
-    setJobDescription("");
+    setResumeFile(null);
+    setJobDescriptionFile(null);
   };
 
   if (result) {
@@ -718,16 +746,37 @@ export default function SkillMatchPage() {
                 <div className="border-b border-white/5 p-4 bg-white/5 rounded-t-xl flex items-center gap-3">
                   <FileText className="h-5 w-5 text-cyan-400" />
                   <span className="font-semibold text-cyan-50">
-                    Update Resume
+                    Upload Resume PDF
                   </span>
                 </div>
                 <div className="p-4">
-                  <Textarea
-                    placeholder="Paste your resume text here..."
-                    value={resume}
-                    onChange={(e) => setResume(e.target.value)}
-                    className="min-h-[300px] bg-transparent border-none text-slate-300 placeholder:text-white-600 focus-visible:ring-0 resize-none font-mono text-sm"
-                  />
+                  <div className="flex flex-col items-center justify-center min-h-[200px] border-2 border-dashed border-cyan-500/30 rounded-lg p-6 hover:border-cyan-400/50 transition-colors">
+                    <FileText className="h-12 w-12 text-cyan-400 mb-4" />
+                    <input
+                      type="file"
+                      accept=".pdf"
+                      onChange={(e) =>
+                        setResumeFile(e.target.files?.[0] || null)
+                      }
+                      className="hidden"
+                      id="resume-upload"
+                    />
+                    <label
+                      htmlFor="resume-upload"
+                      className="cursor-pointer text-center"
+                    >
+                      <span className="text-cyan-300 font-semibold hover:text-cyan-200 transition-colors">
+                        {resumeFile
+                          ? resumeFile.name
+                          : "Click to upload resume PDF"}
+                      </span>
+                      <p className="text-slate-500 text-sm mt-2">
+                        {resumeFile
+                          ? `${(resumeFile.size / 1024 / 1024).toFixed(2)} MB`
+                          : "PDF files only"}
+                      </p>
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>
@@ -739,26 +788,60 @@ export default function SkillMatchPage() {
                 <div className="border-b border-white/5 p-4 bg-white/5 rounded-t-xl flex items-center gap-3">
                   <TrendingUp className="h-5 w-5 text-purple-400" />
                   <span className="font-semibold text-purple-50">
-                    Upload Job Description
+                    Upload Job Description PDF
                   </span>
                 </div>
                 <div className="p-4">
-                  <Textarea
-                    placeholder="Paste the job description here..."
-                    value={jobDescription}
-                    onChange={(e) => setJobDescription(e.target.value)}
-                    className="min-h-[300px] bg-transparent border-none text-slate-300 placeholder:text-white-800 focus-visible:ring-0 resize-none font-mono text-sm"
-                  />
+                  <div className="flex flex-col items-center justify-center min-h-[200px] border-2 border-dashed border-purple-500/30 rounded-lg p-6 hover:border-purple-400/50 transition-colors">
+                    <FileText className="h-12 w-12 text-purple-400 mb-4" />
+                    <input
+                      type="file"
+                      accept=".pdf"
+                      onChange={(e) =>
+                        setJobDescriptionFile(e.target.files?.[0] || null)
+                      }
+                      className="hidden"
+                      id="jd-upload"
+                    />
+                    <label
+                      htmlFor="jd-upload"
+                      className="cursor-pointer text-center"
+                    >
+                      <span className="text-purple-300 font-semibold hover:text-purple-200 transition-colors">
+                        {jobDescriptionFile
+                          ? jobDescriptionFile.name
+                          : "Click to upload job description PDF"}
+                      </span>
+                      <p className="text-slate-500 text-sm mt-2">
+                        {jobDescriptionFile
+                          ? `${(jobDescriptionFile.size / 1024 / 1024).toFixed(2)} MB`
+                          : "PDF files only"}
+                      </p>
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
+          {error && (
+            <div className="mt-8 flex justify-center">
+              <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-6 py-4 text-center">
+                <div className="flex items-center justify-center gap-2 text-red-400">
+                  <XCircle className="h-5 w-5" />
+                  <span className="font-medium">Analysis Failed</span>
+                </div>
+                <p className="mt-2 text-sm text-red-300">{error}</p>
+              </div>
+            </div>
+          )}
+
           <div className="mt-16 flex justify-center">
             <Button
+              type="button"
               size="lg"
               onClick={handleAnalyze}
-              disabled={isLoading || !resume.trim() || !jobDescription.trim()}
+              disabled={isLoading || !resumeFile || !jobDescriptionFile}
               className="relative overflow-hidden bg-cyan-600 hover:bg-cyan-600 text-white px-10 py-8 text-xl font-bold rounded-xl shadow-[0_0_30px_-10px_rgba(6,182,212,0.6)] transition-all hover:scale-105 hover:shadow-[0_0_30px_-10px_rgba(6,182,212,0.8)] disabled:opacity-50 disabled:hover:scale-100 disabled:shadow-none group"
             >
               <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(255,255,255,0.2)_50%,transparent_75%)] bg-[length:250%_250%] group-hover:animate-[shimmer_2s_linear_infinite]" />

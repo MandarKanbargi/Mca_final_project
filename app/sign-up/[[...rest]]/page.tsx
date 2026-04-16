@@ -1,4 +1,4 @@
-import { SignUp } from "@clerk/nextjs"
+import { SignUp } from "@clerk/nextjs";
 
 export default function SignUpPage() {
   return (
@@ -7,8 +7,8 @@ export default function SignUpPage() {
       <div className="fixed top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-cyan-500 to-transparent opacity-50 z-20" />
 
       <div className="relative z-10">
-        <SignUp />
+        <SignUp fallbackRedirectUrl="/" />
       </div>
     </div>
-  )
+  );
 }
