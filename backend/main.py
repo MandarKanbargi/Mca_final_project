@@ -19,42 +19,67 @@ MONGODB_USER = os.getenv("MONGODB_USER")
 MONGODB_PASSWORD = os.getenv("MONGODB_PASSWORD")
 MONGODB_HOST = os.getenv("MONGODB_HOST")
 MONGODB_DB = os.getenv("MONGODB_DB", "ats_database")
+MONGODB_URI = os.getenv("MONGODB_URI") or os.getenv("MONGODB_URL")
 
-# URL encode the password to handle special characters
-encoded_password = urllib.parse.quote_plus(MONGODB_PASSWORD)
 
-# Build connection string with encoded password
-MONGODB_URI = f"mongodb+srv://{MONGODB_USER}:{encoded_password}@{MONGODB_HOST}/{MONGODB_DB}?retryWrites=true&w=majority"
+def build_mongodb_uri():
+    if MONGODB_URI:
+        return MONGODB_URI
+
+    if not (MONGODB_USER and MONGODB_PASSWORD and MONGODB_HOST):
+        return None
+
+    encoded_user = urllib.parse.quote_plus(MONGODB_USER)
+    encoded_password = urllib.parse.quote_plus(MONGODB_PASSWORD)
+    return f"mongodb+srv://{encoded_user}:{encoded_password}@{MONGODB_HOST}/{MONGODB_DB}?retryWrites=true&w=majority"
+
+
+def log_env_warnings():
+    missing = []
+    if not os.getenv("CLERK_SECRET_KEY"):
+        missing.append("CLERK_SECRET_KEY")
+    if not (MONGODB_URI or (MONGODB_USER and MONGODB_PASSWORD and MONGODB_HOST)):
+        missing.append("MONGODB_URI or MONGODB_USER/MONGODB_PASSWORD/MONGODB_HOST")
+    if missing:
+        print("[Config] Missing environment variables:", ", ".join(missing))
+
+
+MONGODB_URI = build_mongodb_uri()
+log_env_warnings()
 
 print(f"[MongoDB] Connecting to database: {MONGODB_DB}")
 print(f"[MongoDB] Host: {MONGODB_HOST}")
 print(f"[MongoDB] User: {MONGODB_USER}")
+print(f"[MongoDB] URI source: {'MONGODB_URI' if os.getenv('MONGODB_URI') else 'built from separate vars' if (MONGODB_USER and MONGODB_PASSWORD and MONGODB_HOST) else 'none'}")
 
-try:
-    # Create client without strict SSL verification for now
-    client = MongoClient(
-        MONGODB_URI,
-        serverSelectionTimeoutMS=10000,
-        connectTimeoutMS=10000,
-        socketTimeoutMS=10000,
-        tls=True,
-        tlsAllowInvalidCertificates=True
-    )
-    
-    db = client[MONGODB_DB]
-    collection = db["skill_analyses"]
-    
-    # Test connection
-    client.admin.command('ping')
-    print(f"[MongoDB] ✓ Successfully connected to {MONGODB_DB}")
-    print(f"[MongoDB] ✓ Collection: skill_analyses")
-    
-except Exception as e:
-    print(f"[MongoDB] ✗ Connection failed: {e}")
-    print(f"[MongoDB] Check your credentials and network access in MongoDB Atlas")
-    # Don't raise here, let the app start but log the error
-    db = None
-    collection = None
+client = None
+collection = None
+
+if MONGODB_URI:
+    try:
+        client = MongoClient(
+            MONGODB_URI,
+            serverSelectionTimeoutMS=10000,
+            connectTimeoutMS=10000,
+            socketTimeoutMS=10000,
+            tls=True,
+            tlsAllowInvalidCertificates=True
+        )
+
+        db = client[MONGODB_DB]
+        collection = db["skill_analyses"]
+
+        # Test connection
+        client.admin.command('ping')
+        print(f"[MongoDB] ✓ Successfully connected to {MONGODB_DB}")
+        print(f"[MongoDB] ✓ Collection: skill_analyses")
+    except Exception as e:
+        print(f"[MongoDB] ✗ Connection failed: {e}")
+        print(f"[MongoDB] Check your credentials and network access in MongoDB Atlas")
+        db = None
+        collection = None
+else:
+    print("[MongoDB] ✗ No MongoDB URI available; please set MONGODB_URI or MONGODB_USER/MONGODB_PASSWORD/MONGODB_HOST")
 
 def extract_text_from_pdf(pdf_file: UploadFile) -> str:
     """Extract text content from a PDF file"""
@@ -265,11 +290,24 @@ async def debug_database_info():
 # CORS middleware 
 from fastapi.middleware.cors import CORSMiddleware
 
+@app.get("/")
+async def root():
+    return {
+        "status": "ok",
+        "mongodb_connected": collection is not None,
+        "database": db.name if db else None,
+        "collection": collection.name if collection else None
+    }
+
+CORS_ALLOWED_ORIGINS = os.getenv("BACKEND_CORS_ORIGINS", "*")
+if CORS_ALLOWED_ORIGINS.strip() == "*":
+    allow_origins = ["*"]
+else:
+    allow_origins = [origin.strip() for origin in CORS_ALLOWED_ORIGINS.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"
-                    , "http://localhost:3001"
-                ],  
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
