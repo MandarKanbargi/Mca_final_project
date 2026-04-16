@@ -8,6 +8,7 @@ const groq = createGroq({
 });
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const isVercel = process.env.VERCEL === "1" || process.env.VERCEL === "true";
 
 function buildRoadmapPrompt(missingSkills: string[]): string {
   return `Create a detailed 2-week learning roadmap for these missing skills: ${missingSkills.join(", ")}
@@ -149,6 +150,16 @@ function parseJsonSkills(text: string) {
 }
 
 export async function POST(request: NextRequest) {
+  if (isVercel && API_BASE_URL.includes("localhost")) {
+    return NextResponse.json(
+      {
+        error:
+          "NEXT_PUBLIC_API_URL is not configured for production. Set NEXT_PUBLIC_API_URL to your deployed backend URL in Vercel environment variables.",
+      },
+      { status: 500 },
+    );
+  }
+
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json(
