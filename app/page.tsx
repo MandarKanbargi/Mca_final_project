@@ -626,6 +626,7 @@ export default function SkillMatchPage() {
       const response = await fetch("/api/analyze-skill", {
         method: "POST",
         body: formData,
+        credentials: "include",
       });
 
       if (!response.ok) {

@@ -54,6 +54,7 @@ print(f"[MongoDB] URI source: {'MONGODB_URI' if os.getenv('MONGODB_URI') else 'b
 
 client = None
 collection = None
+db = None
 
 if MONGODB_URI:
     try:
@@ -295,7 +296,7 @@ async def root():
     return {
         "status": "ok",
         "mongodb_connected": collection is not None,
-        "database": db.name if db else None,
+        "database": db.name if db is not None else None,
         "collection": collection.name if collection else None
     }
 
