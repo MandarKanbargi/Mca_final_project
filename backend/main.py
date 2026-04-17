@@ -72,15 +72,15 @@ if MONGODB_URI:
 
         # Test connection
         client.admin.command('ping')
-        print(f"[MongoDB] ✓ Successfully connected to {MONGODB_DB}")
-        print(f"[MongoDB] ✓ Collection: skill_analyses")
+        print(f"[MongoDB] SUCCESS: Connected to {MONGODB_DB}")
+        print("[MongoDB] SUCCESS: Collection: skill_analyses")
     except Exception as e:
-        print(f"[MongoDB] ✗ Connection failed: {e}")
-        print(f"[MongoDB] Check your credentials and network access in MongoDB Atlas")
+        print(f"[MongoDB] ERROR: Connection failed: {e}")
+        print("[MongoDB] Check your credentials and network access in MongoDB Atlas")
         db = None
         collection = None
 else:
-    print("[MongoDB] ✗ No MongoDB URI available; please set MONGODB_URI or MONGODB_USER/MONGODB_PASSWORD/MONGODB_HOST")
+    print("[MongoDB] ERROR: No MongoDB URI available; please set MONGODB_URI or MONGODB_USER/MONGODB_PASSWORD/MONGODB_HOST")
 
 def extract_text_from_pdf(pdf_file: UploadFile) -> str:
     """Extract text content from a PDF file"""
@@ -195,10 +195,10 @@ async def save_skill_analysis(
         # Verify insertion
         verify_doc = collection.find_one({"_id": result.inserted_id})
         if verify_doc:
-            print(f"[MongoDB] ✓ Document verified in database")
-            print(f"[MongoDB] ✓ Database: {db.name}, Collection: {collection.name}")
+            print(f"[MongoDB] SUCCESS: Document verified in database")
+            print(f"[MongoDB] SUCCESS: Database: {db.name}, Collection: {collection.name}")
         else:
-            print(f"[MongoDB] ✗ Document NOT found after insert!")
+            print("[MongoDB] ERROR: Document NOT found after insert!")
         
         return {
             "success": True,
