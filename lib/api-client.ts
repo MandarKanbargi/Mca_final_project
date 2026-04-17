@@ -1,6 +1,15 @@
 import { auth } from "@clerk/nextjs/server";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE_URL = normalizeBackendUrl(
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
+);
+
+function normalizeBackendUrl(url: string) {
+  let normalized = url.trim();
+  normalized = normalized.replace(/\/+$|\s+$/g, "");
+  normalized = normalized.replace(/\/api$/, "");
+  return normalized;
+}
 
 interface SkillAnalysisData {
   resume_text: string;
@@ -46,7 +55,7 @@ export async function getUserHistory(limit: number = 10) {
       headers: {
         Authorization: `Bearer ${token}`,
       },
-    }
+    },
   );
 
   if (!response.ok) {
@@ -65,7 +74,7 @@ export async function getAnalysisById(analysisId: string) {
       headers: {
         Authorization: `Bearer ${token}`,
       },
-    }
+    },
   );
 
   if (!response.ok) {
@@ -85,7 +94,7 @@ export async function deleteAnalysis(analysisId: string) {
       headers: {
         Authorization: `Bearer ${token}`,
       },
-    }
+    },
   );
 
   if (!response.ok) {

@@ -128,7 +128,16 @@ Example with VALID links for ALL content:
 Keep it practical, progressive, and actionable with WORKING links for EVERY learning item from the approved sources only.`;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE_URL = normalizeBackendUrl(
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
+);
+
+function normalizeBackendUrl(url: string) {
+  let normalized = url.trim();
+  normalized = normalized.replace(/\/+$|\s+$/g, "");
+  normalized = normalized.replace(/\/api$/, "");
+  return normalized;
+}
 
 async function saveToMongoDB(analysisData: {
   resume_text: string;

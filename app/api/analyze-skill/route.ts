@@ -7,8 +7,19 @@ const groq = createGroq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE_URL = normalizeBackendUrl(
+  process.env.BACKEND_API_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    "http://localhost:8000",
+);
 const isVercel = process.env.VERCEL === "1" || process.env.VERCEL === "true";
+
+function normalizeBackendUrl(url: string) {
+  let normalized = url.trim();
+  normalized = normalized.replace(/\/+$|\s+$/g, "");
+  normalized = normalized.replace(/\/api$/, "");
+  return normalized;
+}
 
 function buildRoadmapPrompt(missingSkills: string[]): string {
   return `Create a detailed 2-week learning roadmap for these missing skills: ${missingSkills.join(", ")}
