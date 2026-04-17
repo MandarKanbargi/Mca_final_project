@@ -297,7 +297,7 @@ async def root():
         "status": "ok",
         "mongodb_connected": collection is not None,
         "database": db.name if db is not None else None,
-        "collection": collection.name if collection else None
+        "collection": collection.name if collection is not None else None
     }
 
 CORS_ALLOWED_ORIGINS = os.getenv("BACKEND_CORS_ORIGINS", "*")
